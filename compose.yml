@@ -1,0 +1,78 @@
+services:
+  diun:
+    image: crazymax/diun:latest
+    container_name: diun
+    hostname: diun
+    command: serve
+    restart: unless-stopped
+
+    environment:
+      TZ: Europe/Athens
+      LOG_LEVEL: info
+      LOG_JSON: "false"
+
+    volumes:
+      - ./data:/data
+      - ./diun.yml:/diun.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    networks:
+      - default
+      - alerts
+
+    healthcheck:
+      test: ["CMD", "diun", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+    security_opt:
+      - no-new-privileges:true
+
+    labels:
+      - diun.enable=true
+
+  diun-signal-bridge:
+    image: python:3.13-alpine
+    container_name: diun-signal-bridge
+    restart: unless-stopped
+
+    command:
+      - python
+      - /app/signal_bridge.py
+
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      SIGNAL_API_URL: http://signal-api:8080/v2/send
+      SIGNAL_NUMBER: ${SIGNAL_NUMBER}
+      SIGNAL_RECIPIENTS: ${SIGNAL_RECIPIENTS}
+
+    volumes:
+      - ./signal_bridge.py:/app/signal_bridge.py:ro
+
+    networks:
+      - alerts
+
+    read_only: true
+
+    tmpfs:
+      - /tmp
+
+    security_opt:
+      - no-new-privileges:true
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  alerts:
+    external: true

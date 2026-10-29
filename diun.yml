@@ -1,0 +1,21 @@
+db:
+  path: /data/diun.db
+
+watch:
+  workers: 10
+  schedule: "0 */6 * * *"
+  jitter: 30s
+  firstCheckNotif: false
+
+providers:
+  docker:
+    watchByDefault: true
+    watchStopped: false
+
+notif:
+  webhook:
+    endpoint: http://diun-signal-bridge:8080/diun
+    method: POST
+    headers:
+      content-type: application/json
+    timeout: 10s
