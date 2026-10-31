@@ -18,5 +18,4 @@ notif:
     method: POST
     headers:
       content-type: application/json
-      authorization: "Bearer ${BRIDGE_WEBHOOK_TOKEN}"
     timeout: 10s
