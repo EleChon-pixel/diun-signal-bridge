@@ -1,25 +1,43 @@
 services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.4.1
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      IMAGES: "1"
+      INFO: "1"
+      NETWORKS: "0"
+      POST: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs: [/run, /tmp]
+    cap_drop: [ALL]
+
   diun:
-    image: crazymax/diun:latest
+    image: crazymax/diun:4
     container_name: diun
     hostname: diun
     command: serve
     restart: unless-stopped
-
     environment:
       TZ: Europe/Athens
       LOG_LEVEL: info
       LOG_JSON: "false"
-
+      DOCKER_HOST: tcp://socket-proxy:2375
+      BRIDGE_WEBHOOK_TOKEN: ${BRIDGE_WEBHOOK_TOKEN:?Set BRIDGE_WEBHOOK_TOKEN in private .env}
     volumes:
       - ./data:/data
       - ./diun.yml:/diun.yml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-
-    networks:
-      - default
-      - alerts
-
+    depends_on: [socket-proxy]
+    networks: [docker-api, alerts]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     healthcheck:
       test: ["CMD", "diun", "healthcheck"]
       interval: 30s
@@ -27,52 +45,36 @@ services:
       retries: 3
       start_period: 60s
 
-    security_opt:
-      - no-new-privileges:true
-
-    labels:
-      - diun.enable=true
-
   diun-signal-bridge:
     image: python:3.13-alpine
     container_name: diun-signal-bridge
     restart: unless-stopped
-
-    command:
-      - python
-      - /app/signal_bridge.py
-
+    command: [python, /app/signal_bridge.py]
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
       SIGNAL_API_URL: http://signal-api:8080/v2/send
-      SIGNAL_NUMBER: ${SIGNAL_NUMBER}
-      SIGNAL_RECIPIENTS: ${SIGNAL_RECIPIENTS}
-
+      SIGNAL_NUMBER: ${SIGNAL_NUMBER:?Set SIGNAL_NUMBER in private .env}
+      SIGNAL_RECIPIENTS: ${SIGNAL_RECIPIENTS:?Set SIGNAL_RECIPIENTS in private .env}
+      BRIDGE_WEBHOOK_TOKEN: ${BRIDGE_WEBHOOK_TOKEN:?Set BRIDGE_WEBHOOK_TOKEN in private .env}
     volumes:
       - ./signal_bridge.py:/app/signal_bridge.py:ro
-
-    networks:
-      - alerts
-
+    networks: [alerts]
     read_only: true
-
-    tmpfs:
-      - /tmp
-
+    tmpfs: [/tmp]
     security_opt:
       - no-new-privileges:true
-
+    cap_drop: [ALL]
+    mem_limit: 128m
+    pids_limit: 64
     healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).close()"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
 
 networks:
+  docker-api:
+    internal: true
   alerts:
     external: true
