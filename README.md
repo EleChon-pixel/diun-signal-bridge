@@ -26,7 +26,7 @@ Requirements: Docker, and a running signal-cli-rest-api container with a registe
 
 1. Create the shared network once: `docker network create alerts`.
 2. Attach your signal-api container to that `alerts` network.
-3. Copy `.env.example` to `.env` and fill in your Signal number and recipients. Keep `.env` private and never commit it.
+3. Copy `.env.example` to `.env`, fill in your Signal number and recipients, and generate a private 48-byte random webhook token with `python3 -c 'import secrets; print(secrets.token_urlsafe(48))'`. Put it in `BRIDGE_WEBHOOK_TOKEN`. Keep `.env` private (`chmod 600 .env`) and never commit it.
 4. Run `docker compose up -d`.
 
 Diun checks every six hours by default (`schedule` in `diun.yml`) and watches all running containers. Set `watchByDefault: false` and add the label `diun.enable=true` to only watch chosen containers.
@@ -41,6 +41,13 @@ Diun checks every six hours by default (`schedule` in `diun.yml`) and watches al
 
 ## Security notes
 
-- The bridge has no authentication. It only listens on the internal `alerts` network and publishes no host ports; keep it that way.
-- Diun needs read-only access to the Docker socket to see your containers. That socket is effectively root access, so only run images you trust.
+- The bridge checks the DIUN `Authorization: Bearer` webhook header against the private token. It fails closed without the token and never publishes a host port. DIUN sends the header through `DIUN_NOTIF_WEBHOOK_HEADERS_AUTHORIZATION`. Leave `alerts` restricted to trusted services.
+- DIUN no longer mounts the Docker socket. A dedicated socket proxy on an internal-only `docker-api` network allows GET access to needed Docker API resources and denies POST. Only the proxy mounts the real Docker socket. This reduces the blast radius but the proxy still has privileged access and needs image updates and restricted network membership.
 - The bridge container runs with a read-only filesystem and `no-new-privileges`.
+
+
+## Migration and verification
+
+The updated configuration **requires a new local secret**. After pulling changes to the server, add `BRIDGE_WEBHOOK_TOKEN` to the existing private `.env`. Keep the same token on both DIUN and bridge (Compose passes it to both) and keep `.env` out of Git. Run `docker compose config --quiet` to check interpolation, then `docker compose pull && docker compose up -d`. Inspect `docker compose ps` and `docker compose logs --tail 60 diun diun-signal-bridge socket-proxy`. The webhook accepts at most 64 KiB of JSON and at most eight concurrent requests. Unauthorized POSTs return 401; invalid bodies are rejected; healthy bridge responds on `/health`.
+
+The proxy image is pinned to a released tag rather than `latest`, and DIUN uses its major-release tag. Periodically update both after checking upstream release notes. No real Signal phone numbers or webhook secrets are stored in this repository.
