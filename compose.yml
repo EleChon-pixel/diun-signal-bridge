@@ -1,6 +1,6 @@
 services:
   socket-proxy:
-    image: tecnativa/docker-socket-proxy:0.4.1
+    image: tecnativa/docker-socket-proxy:v0.4.1
     restart: unless-stopped
     environment:
       CONTAINERS: "1"
@@ -30,6 +30,7 @@ services:
       LOG_JSON: "false"
       DOCKER_HOST: tcp://socket-proxy:2375
       BRIDGE_WEBHOOK_TOKEN: ${BRIDGE_WEBHOOK_TOKEN:?Set BRIDGE_WEBHOOK_TOKEN in private .env}
+      DIUN_NOTIF_WEBHOOK_HEADERS_AUTHORIZATION: "Bearer ${BRIDGE_WEBHOOK_TOKEN:?Set BRIDGE_WEBHOOK_TOKEN in private .env}"
     volumes:
       - ./data:/data
       - ./diun.yml:/diun.yml:ro
